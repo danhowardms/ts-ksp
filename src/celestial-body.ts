@@ -27,6 +27,11 @@ class CelestialBody {
     register.set(name, this);
   }
 
+  /**
+   * Calculate the speed required to maintain a circular orbit at the given altitude above the body's surface
+   *
+   * @param altitude
+   */
   circularOrbitVelocity(altitude: number): number {
     return Math.sqrt(this.gravitationalParameter / (altitude + this.radius));
   }

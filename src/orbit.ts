@@ -1,7 +1,7 @@
-import { Vector3, addVV, subVV, mulVS, divVS, normSquaredV, normV, normalizeV, dotVV, crossVV } from "./vector3";
+import { Vector3, addVV, subVV, mulVS, divVS, normSquaredV, normV, normalizeV, dotVV, crossVV, projectToPlane } from "./vector3";
 import { Quaternion, conjugateQ, concatQQ, quaternionFromAngleAndAxis, quaternionFromStartAndEndVectors, rotate } from "./quaternion";
 import { newtonsMethod, goldenSectionSearch } from "./roots";
-import { solveLambert } from "./lambert";
+import {LambertSolution, solveLambert} from "./lambert";
 import { TransferOptions } from "./transfer-options";
 import { CelestialBody } from "./celestial-body";
 import { AngleDegrees } from "./utility-types";
@@ -40,11 +40,6 @@ const acosh = (n: number): number => {
   return Math.log(n + Math.sqrt(n * n - 1));
 };
 
-// Find the projection of the point p onto the plane (through the origin) defined by the unit normal vector n
-const projectToPlane = (p: Vector3, n: Vector3): Vector3 => {
-  return subVV(p, mulVS(n, dotVV(p, n)));
-};
-
 // @todo I THINK what is happening here is that from and to are both projected into the plane defined by normal
 // Then we find out the angle between their projections
 const angleInPlane = (from: Vector3, to: Vector3, normal: Vector3): number => {
@@ -65,6 +60,10 @@ const degreesToRadians = (degrees: AngleDegrees): number => {
   return ((degrees * Math.PI) / 180) as number;
 };
 
+const radiansToDegrees = (radians: number): AngleDegrees => {
+  return ((radians * 180) / Math.PI) as AngleDegrees;
+};
+
 class Orbit {
   referenceBody: CelestialBody;
   semiMajorAxis: number;
@@ -73,7 +72,7 @@ class Orbit {
   longitudeOfAscendingNode: number = 0;
   argumentOfPeriapsis: number = 0;
   meanAnomalyAtEpoch: number = 0;
-  timeOfPeriapsisPassage: number = 0;
+  timeOfPeriapsisPassage: number | undefined;
 
   constructor(referenceBody1: CelestialBody, semiMajorAxis1: number, eccentricity1: number, inclinationDegs?: AngleDegrees, longitudeOfAscendingNodeDegs?: AngleDegrees, argumentOfPeriapsisDegs?: AngleDegrees, meanAnomalyAtEpoch1?: number, timeOfPeriapsisPassage1?: number) {
     this.referenceBody = referenceBody1;
@@ -91,9 +90,19 @@ class Orbit {
     if (meanAnomalyAtEpoch1 != null) {
       this.meanAnomalyAtEpoch = meanAnomalyAtEpoch1;
     }
-    if (timeOfPeriapsisPassage1 != null) {
-      this.timeOfPeriapsisPassage = timeOfPeriapsisPassage1;
-    }
+    this.timeOfPeriapsisPassage = timeOfPeriapsisPassage1;
+  }
+
+  inclinationDegs(): AngleDegrees {
+    return radiansToDegrees(this.inclination);
+  }
+
+  longitudeOfAscendingNodeDegs(): AngleDegrees {
+    return radiansToDegrees(this.longitudeOfAscendingNode);
+  }
+
+  argumentOfPeriapsisDegs(): AngleDegrees {
+    return radiansToDegrees(this.argumentOfPeriapsis);
   }
 
   isHyperbolic(): boolean {
@@ -168,7 +177,8 @@ class Orbit {
 
   meanAnomalyAt(t: number): number {
     if (this.isHyperbolic()) {
-      return (t - this.timeOfPeriapsisPassage) * this.meanMotion();
+      const tp = (this.timeOfPeriapsisPassage == null) ? 0 : this.timeOfPeriapsisPassage;
+      return (t - tp) * this.meanMotion();
     } else {
       if (this.timeOfPeriapsisPassage != null) {
         const M = ((t - this.timeOfPeriapsisPassage) % this.period()) * this.meanMotion();
@@ -222,6 +232,11 @@ class Orbit {
     }
   }
 
+  positionAt(t: number): Vector3 {
+    const tA = this.trueAnomalyAt(t);
+    return this.positionAtTrueAnomaly(tA);
+  }
+
   eccentricAnomalyAtTrueAnomaly(tA: number): number {
     const e = this.eccentricity;
     if (this.isHyperbolic()) {
@@ -259,7 +274,8 @@ class Orbit {
     }
     const M = this.meanAnomalyAtTrueAnomaly(tA);
     if (this.isHyperbolic()) {
-      return this.timeOfPeriapsisPassage + M / this.meanMotion();
+      const tp = (this.timeOfPeriapsisPassage == null) ? 0 : this.timeOfPeriapsisPassage;
+      return tp + M / this.meanMotion();
     } else {
       let t: number;
       const p = this.period();
@@ -405,36 +421,62 @@ const ejectionAngleFromPeriapsis = (originBody: OrbitingCelestialBody, initialOr
   const mu = originBody.gravitationalParameter;
   const rsoi = originBody.sphereOfInfluence;
   const initialOrbitRadius = mu / (initialOrbitalVelocity * initialOrbitalVelocity);
+  // Eq 4.15 Velocity at periapsis
   const v1 = Math.sqrt(ejectionDeltaV * ejectionDeltaV + 2 * initialOrbitalVelocity * initialOrbitalVelocity - (2 * mu) / rsoi);
+  // Ejection orbit eccentricity
   const e = (initialOrbitRadius * v1 * v1) / mu - 1;
+  // Ejection orbit semi-major axis
   const a = initialOrbitRadius / (1 - e);
+  // Eq. 4.82 True anomaly at SOI
   const theta = Math.acos((a * (1 - e * e) - rsoi) / (e * rsoi));
+  // Eq 4.23 Zenith angle at SOI
   return theta + Math.asin((v1 * initialOrbitRadius) / (ejectionDeltaV * rsoi));
 };
 
 const ejectionPeriapsisDirection = (vsoi: Vector3, theta: number): Vector3 => {
+  // Requires |vsoi| == 1 and cos(theta) <= 0
   const cosTheta = Math.cos(theta);
+
+  // We have two equations of two unknowns (vx, vy):
+  //   dot(v, vsoi) = cosTheta
+  //   norm(v) = 1  [Unit vector]
+  //   vz = 0  [Perpendicular to z-axis]
+  //
+  // Solution is defined iff:
+  //   vsoi[1] != 0 [because we are solving for vx first]
+  //   |sin(theta)| >= |vsoi[2]| [there is a valid orbit with periapsis in the equatorial plane]
+
+  // Intermediate terms
   const g = -vsoi[0] / vsoi[1];
+
+  // Quadratic coefficients
   const a = 1 + g * g;
   const b = (2 * g * cosTheta) / vsoi[1];
   const c = (cosTheta * cosTheta) / (vsoi[1] * vsoi[1]) - 1;
+
+  // Quadratic formula without loss of significance (Numerical Recipes eq. 5.6.4)
   let q: number;
   if (b < 0) {
     q = -0.5 * (b - Math.sqrt(b * b - 4 * a * c));
   } else {
     q = -0.5 * (b + Math.sqrt(b * b - 4 * a * c));
   }
+
+  // Solution
   let vx = q / a;
   let vy = g * vx + cosTheta / vsoi[1];
+
   if (sign(crossVV([vx, vy, 0], vsoi)[2]) < 0) {
+    // Wrong orbital direction
     vx = c / q;
     vy = g * vx + cosTheta / vsoi[1];
   }
+
   return [vx, vy, 0];
 };
 
 const ejectionAngleToPrograde = (periapsis: Vector3, prograde: Vector3): number => {
-  prograde = normalizeV([prograde[0], prograde[1], 0]);
+  prograde = normalizeV([prograde[0], prograde[1], 0]); // Project the prograde vector onto the XY plane
   if (crossVV(periapsis, prograde)[2] < 0) {
     return TWO_PI - Math.acos(dotVV(periapsis, prograde));
   } else {
@@ -442,19 +484,27 @@ const ejectionAngleToPrograde = (periapsis: Vector3, prograde: Vector3): number 
   }
 };
 
-const ejectionDetails = (ejectionDeltaVector: Vector3, ejectionDeltaV: number, originBody: OrbitingCelestialBody, initialOrbitalVelocity: number, progradeDirection: Vector3) => {
+/**
+ *
+ * @param ejectionDeltaVector change in velocity vector required to transform the originBody's orbit to the desired transfer orbit
+ * @param ejectionDeltaV dv required for the above velocity change
+ * @param originBody
+ * @param initialOrbitalVelocity Speed that our ship is orbiting the originBody (assuming circular orbit)
+ * @param progradeDirection Unit vector pointing in originBody's prograde direction
+ */
+const ejectionDetails = (ejectionDeltaVector: Vector3, ejectionDeltaV: number, originBody: OrbitingCelestialBody, initialOrbitalVelocity: number, progradeDirection: Vector3): [number, number, number] => {
   const ejectionDirection = divVS(ejectionDeltaVector, ejectionDeltaV);
   const theta = ejectionAngleFromPeriapsis(originBody, initialOrbitalVelocity, ejectionDeltaV);
   if (Math.abs(Math.sin(theta)) < Math.abs(ejectionDirection[2])) {
+    // There is no ejection orbit with a periapsis on the equatorial plane that leaves the SoI with ejectionDeltaVector velocity
     return [NaN, NaN, NaN];
   } else {
     const periapsisDirection = ejectionPeriapsisDirection(ejectionDirection, theta);
     const ejectionAngle = ejectionAngleToPrograde(periapsisDirection, progradeDirection);
     let ejectionInclination = Math.acos(normalizeV(crossVV(periapsisDirection, ejectionDirection))[2]);
     ejectionInclination *= sign(Math.PI - theta) * sign(ejectionDirection[2]);
-    // @todo I think ejectionDeltaV ought to have a different name, because it seems to be being used twice with a different meaning
-    ejectionDeltaV = circularToEscapeDeltaV(originBody, initialOrbitalVelocity, ejectionDeltaV, ejectionInclination);
-    return [ejectionDeltaV, ejectionInclination, ejectionAngle];
+    const modifiedEjectionDeltaV = circularToEscapeDeltaV(originBody, initialOrbitalVelocity, ejectionDeltaV, ejectionInclination);
+    return [modifiedEjectionDeltaV, ejectionInclination, ejectionAngle];
   }
 };
 
@@ -502,22 +552,46 @@ const findTransfer = (transferType: TransferType, opts: TransferOptions): Transf
   }
 };
 
+const bestLambertSolution = (opts: TransferOptions, targetPos: Vector3, maxRevs?: number): LambertSolution => {
+  const solutions = solveLambert(opts.referenceBody.gravitationalParameter, opts.p0, targetPos, opts.dt, maxRevs);
+  let minDeltaV = Infinity;
+  let bestSolution: LambertSolution = solutions[0]; // @todo Not sure if it's really safe to assume there will be a solution
+  if (solutions.length > 1) {
+    // There is more than one solution, so we'll search for the one with the minimum total dv
+    // Note in we're not actually calculating the dv required for coming out of a particular orbit around the originBody
+    // or getting into a particular orbit around the destinationBody
+    // Just the dv required to transfer from a solar orbit matching that of the originBody to a solar orbit matching that of the destinationBody
+    for (const s of solutions) {
+      // DH: What dv is required for a burn to transform opts.v0 (velocity of originBody at time of departure) into s.ejectionVelocity (velocity required for transfer)
+      let dv = normV(subVV(s.ejectionVelocity, opts.v0));
+      if (opts.finalOrbitalVelocity != null) {
+        // DH what dv is required for a burn to transform s.insertionVelocity (velocity on transfer orbit at time of arrival) into opts.v1 (velocity of destinationBody at time of arrival)
+        dv += normV(subVV(s.insertionVelocity, opts.v1));
+      }
+      if (dv < minDeltaV) {
+        // This solution is the best one so far
+        minDeltaV = dv;
+        bestSolution = s;
+      }
+    }
+  }
+  return bestSolution;
+}
+
 const calculateTransfer = (opts: TransferOptions, planeChangeAngleToIntercept: number | undefined): Transfer => {
   let planeChangeAngle;
   let planeChangeRotation;
   let p1InOriginPlane;
-  // @todo we shouldn't need to set these dummy values - they are bound to be set by the code below
-  // it just isn't clear that they always will be
-  let ejectionVelocity: Vector3 = [0, 0, 0];
-  let insertionVelocity: Vector3 = [0, 0, 0];
-  let planeChangeDeltaV;
+  let ejectionVelocity: Vector3;
+  let insertionVelocity: Vector3;
+  let planeChangeDeltaV = 0;
   let planeChangeTime;
   let ejectionInclination;
   let ejectionAngle;
   let ejectionDeltaV;
-  let insertionDeltaV;
+  let insertionDeltaV = 0;
   let insertionInclination;
-  let orbit;
+  let transferOrbit;
 
   if (planeChangeAngleToIntercept != null) {
     const relativeInclination = Math.asin(dotVV(opts.p1, opts.n0) / normV(opts.p1));
@@ -531,66 +605,63 @@ const calculateTransfer = (opts: TransferOptions, planeChangeAngleToIntercept: n
   }
 
   if (planeChangeAngleToIntercept && planeChangeAngle && transferAngle > HALF_PI) {
+    // DH: There's going to be a plane change during the transfer
+    // So we need to solve the lambert problem aiming at a point above/underneath where the destinationBody will actually be
+    // IE opts.p1 rotated into the plane that we're on currently
     const planeChangeAxis = rotate(quaternionFromAngleAndAxis(-planeChangeAngleToIntercept, opts.n0), projectToPlane(opts.p1, opts.n0));
     planeChangeRotation = quaternionFromAngleAndAxis(planeChangeAngle, planeChangeAxis);
     p1InOriginPlane = rotate(conjugateQ(planeChangeRotation), opts.p1);
 
-    const solutions = solveLambert(opts.referenceBody.gravitationalParameter, opts.p0, p1InOriginPlane, opts.dt);
-    ejectionVelocity = solutions[0].ejectionVelocity;
-    insertionVelocity = solutions[0].insertionVelocity;
-    orbit = Orbit.fromPositionAndVelocity(opts.referenceBody, opts.p0, ejectionVelocity, opts.t0);
-    const planeChangeTrueAnomaly = orbit.trueAnomalyAt(opts.t1) - planeChangeAngleToIntercept;
-    planeChangeDeltaV = Math.abs(2 * orbit.speedAtTrueAnomaly(planeChangeTrueAnomaly) * Math.sin(planeChangeAngle / 2));
+    const solution = bestLambertSolution(opts, p1InOriginPlane);
+    ejectionVelocity = solution.ejectionVelocity;
+    insertionVelocity = solution.insertionVelocity;
+    transferAngle = solution.transferAngle;
+    transferOrbit = Orbit.fromPositionAndVelocity(opts.referenceBody, opts.p0, ejectionVelocity, opts.t0);
+
+    // true anomaly at point on transferOrbit where we will do the plane change burn
+    const planeChangeTrueAnomaly = transferOrbit.trueAnomalyAt(opts.t1) - planeChangeAngleToIntercept;
+    // dv required to perform the plane change
+    planeChangeDeltaV = Math.abs(2 * transferOrbit.speedAtTrueAnomaly(planeChangeTrueAnomaly) * Math.sin(planeChangeAngle / 2));
     if (isNaN(planeChangeDeltaV)) {
       planeChangeDeltaV = 0;
     }
-    planeChangeTime = orbit.timeAtTrueAnomaly(planeChangeTrueAnomaly, opts.t0);
+    // when to perform the plane change
+    planeChangeTime = transferOrbit.timeAtTrueAnomaly(planeChangeTrueAnomaly, opts.t0);
+    // adjust the insertionVelocity to take into account the plane change burn
     insertionVelocity = rotate(planeChangeRotation, insertionVelocity);
   } else {
-    const solutions = solveLambert(opts.referenceBody.gravitationalParameter, opts.p0, opts.p1, opts.dt, 10);
-    let minDeltaV = Infinity;
-    for (let j = 0, len = solutions.length; j < len; j++) {
-      const s = solutions[j];
-      let dv = normV(subVV(s.ejectionVelocity, opts.v0));
-      // @todo original code was this
-      // if (typeof finalOrbitVelocity !== "undefined" && finalOrbitVelocity !== null) {
-      // but I think this must be a typo, so I changed to finalOrbitalVelocity
-      if (opts.finalOrbitalVelocity != null) {
-        dv += normV(subVV(s.insertionVelocity, opts.v1));
-      }
-      if (dv < minDeltaV) {
-        minDeltaV = dv;
-        ejectionVelocity = s.ejectionVelocity;
-        insertionVelocity = s.insertionVelocity;
-        transferAngle = s.transferAngle;
-      }
-    }
-    planeChangeDeltaV = 0;
+    // There won't be a plane change burn during the transfer - solve Lambert aiming directly for destinationBody
+    const solution = bestLambertSolution(opts, opts.p1,10);
+    ejectionVelocity = solution.ejectionVelocity;
+    insertionVelocity = solution.insertionVelocity;
+    transferOrbit = Orbit.fromPositionAndVelocity(opts.referenceBody, opts.p0, ejectionVelocity, opts.t0);
   }
 
+  // DH: What change in the velocity vector is required to transform opts.v0 (velocity of originBody at time of departure) into s.ejectionVelocity (velocity required to be on transferOrbit)
   const ejectionDeltaVector = subVV(ejectionVelocity, opts.v0);
+  // ...and how much dv is required to perform this burn
   ejectionDeltaV = normV(ejectionDeltaVector); // This is actually the hyperbolic excess velocity if ejecting from a parking orbit
 
   if (opts.initialOrbitalVelocity != null) {
+    // We now take into account the fact that the starting point is actually a specific orbit around the originBody
+    // So we adjust the ejection parameters to take this starting orbit into account (Oberth effect)
     [ejectionDeltaV, ejectionInclination, ejectionAngle] = ejectionDetails(ejectionDeltaVector, ejectionDeltaV, opts.originBody, opts.initialOrbitalVelocity, normalizeV(opts.v0));
   } else {
+    // No starting orbit - so just calculate ejectionInclination
     ejectionInclination = Math.asin(ejectionDeltaVector[2] / ejectionDeltaV);
   }
 
   if (opts.finalOrbitalVelocity != null) {
+    // Now work out the deltaV needed to get into the target orbit at the destinationBody
     const insertionDeltaVector = subVV(insertionVelocity, opts.v1);
     insertionDeltaV = normV(insertionDeltaVector); // This is actually the hyperbolic excess velocity if inserting into a parking orbit
     insertionInclination = Math.asin(insertionDeltaVector[2] / insertionDeltaV);
-    if (opts.finalOrbitalVelocity) {
-      insertionDeltaV = insertionToCircularDeltaV(opts.destinationBody, insertionDeltaV, opts.finalOrbitalVelocity);
-    }
-  } else {
-    insertionDeltaV = 0;
+    insertionDeltaV = insertionToCircularDeltaV(opts.destinationBody, insertionDeltaV, opts.finalOrbitalVelocity);
   }
 
   return {
     angle: transferAngle,
-    orbit,
+    orbit: transferOrbit,
     ejectionVelocity,
     ejectionDeltaVector,
     ejectionInclination,
@@ -626,7 +697,6 @@ const getPlaneChangeAngleToIntercept = (opts: TransferOptions): number => {
   const relativeInclination = Math.asin(dotVV(opts.p1, opts.n0) / normV(opts.p1));
   let planeChangeRotation = quaternionFromAngleAndAxis(-relativeInclination, crossVV(opts.p1, opts.n0));
   let p1InOriginPlane = rotate(planeChangeRotation, opts.p1);
-  let v1InOriginPlane = rotate(planeChangeRotation, opts.v1);
   let ejectionVelocity = solveLambert(opts.referenceBody.gravitationalParameter, opts.p0, p1InOriginPlane, opts.dt)[0].ejectionVelocity;
   let orbit = Orbit.fromPositionAndVelocity(opts.referenceBody, opts.p0, ejectionVelocity, opts.t0);
   let trueAnomalyAtIntercept = orbit.trueAnomalyAtPosition(p1InOriginPlane);
@@ -640,7 +710,6 @@ const getPlaneChangeAngleToIntercept = (opts: TransferOptions): number => {
   const planeChangeAxis = rotate(quaternionFromAngleAndAxis(-x, opts.n0), projectToPlane(opts.p1, opts.n0));
   planeChangeRotation = quaternionFromAngleAndAxis(planeChangeAngle, planeChangeAxis);
   p1InOriginPlane = rotate(planeChangeRotation, opts.p1);
-  v1InOriginPlane = rotate(planeChangeRotation, opts.v1);
   ejectionVelocity = solveLambert(opts.referenceBody.gravitationalParameter, opts.p0, p1InOriginPlane, opts.dt)[0].ejectionVelocity;
   orbit = Orbit.fromPositionAndVelocity(opts.referenceBody, opts.p0, ejectionVelocity, opts.t0);
   trueAnomalyAtIntercept = orbit.trueAnomalyAtPosition(p1InOriginPlane);

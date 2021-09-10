@@ -1,10 +1,23 @@
-import {kerbin, moho} from "./kerbol-system";
-import {TransferOptions} from "./transfer-options";
+import {CelestialBody} from "./celestial-body";
+import * as KerbolSystem from "./kerbol-system";
+import {LambertSolution, solveLambert} from "./lambert";
+import {Orbit, TransferType, findTransfer} from "./orbit";
 import {OrbitingCelestialBody} from "./orbiting-celestial-body";
-import {Vector3} from "./vector3";
-import {TransferType, findTransfer} from "./orbit";
+import { Quaternion, addQQ, conjugateQ, normalizeQ, concatQQ, quaternionFromAngleAndAxis, quaternionFromStartAndEndVectors, vectorToQuaternion, quaternionToVector, rotate } from './quaternion';
+import {newtonsMethod, brentsMethod, goldenSectionSearch} from "./roots";
+import {TransferOptions} from "./transfer-options";
+import {AngleDegrees} from "./utility-types";
+import {Vector3, addVV, subVV, mulVS, divVS, normSquaredV, normV, normalizeV, dotVV, crossVV, projectToPlane} from "./vector3";
 
-const opts = new TransferOptions(kerbin, moho, 0, 426 * 6 * 60 * 60, 2600, 800);
-const transfer = findTransfer(TransferType.OPTIMAL_PLANE_CHANGE, opts);
-console.log(transfer);
-
+export {
+    CelestialBody,
+    OrbitingCelestialBody,
+    KerbolSystem,
+    LambertSolution,
+    Orbit, TransferType, findTransfer,
+    Quaternion, addQQ, conjugateQ, normalizeQ, concatQQ, quaternionFromAngleAndAxis, quaternionFromStartAndEndVectors, vectorToQuaternion, quaternionToVector, rotate,
+    newtonsMethod, brentsMethod, goldenSectionSearch,
+    TransferOptions,
+    AngleDegrees,
+    Vector3, addVV, subVV, mulVS, divVS, normSquaredV, normV, normalizeV, dotVV, crossVV, projectToPlane
+};

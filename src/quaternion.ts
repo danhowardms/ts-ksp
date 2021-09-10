@@ -16,7 +16,11 @@ const normalizeQ = (q: Quaternion): Quaternion => {
 };
 
 const concatQQ = (q0: Quaternion, q1: Quaternion): Quaternion => {
-  return [q0[3] * q1[0] + q0[0] * q1[3] + q0[1] * q1[2] - q0[2] * q1[1], q0[3] * q1[1] - q0[0] * q1[2] + q0[1] * q1[3] + q0[2] * q1[0], q0[3] * q1[2] + q0[0] * q1[1] - q0[1] * q1[0] + q0[2] * q1[3], q0[3] * q1[3] - q0[0] * q1[0] - q0[1] * q1[1] - q0[2] * q1[2]];
+  const x = q0[3] * q1[0] + q0[0] * q1[3] + q0[1] * q1[2] - q0[2] * q1[1];
+  const y = q0[3] * q1[1] - q0[0] * q1[2] + q0[1] * q1[3] + q0[2] * q1[0];
+  const z = q0[3] * q1[2] + q0[0] * q1[1] - q0[1] * q1[0] + q0[2] * q1[3];
+  const w = q0[3] * q1[3] - q0[0] * q1[0] - q0[1] * q1[1] - q0[2] * q1[2];
+  return [x, y, z, w];
 };
 
 const quaternionFromAngleAndAxis = (angle: number, axis: Vector3): Quaternion => {
@@ -52,6 +56,23 @@ const quaternionToVector = (q: Quaternion): Vector3 => {
 const rotate = (q: Quaternion, v: Vector3): Vector3 => {
   const p = vectorToQuaternion(v);
   return quaternionToVector(concatQQ(concatQQ(q, p), conjugateQ(q)));
+};
+
+const quaternionToRotationMatrix = (q: Quaternion) => {
+  // First row of the rotation matrix
+  const r00 = 2 * (q[0] * q[0] + q[1] * q[1]) - 1;
+  const r01 = 2 * (q[1] * q[2] - q[0] * q[3]);
+  const r02 = 2 * (q[1] * q[3] + q[0] * q[2]);
+  // Second row of the rotation matrix
+  const r10 = 2 * (q[1] * q[2] + q[0] * q[3]);
+  const r11 = 2 * (q[0] * q[0] + q[2] * q[2]) - 1;
+  const r12 = 2 * (q[2] * q[3] - q[0] * q[1]);
+  // Third row of the rotation matrix
+  const r20 = 2 * (q[1] * q[3] - q[0] * q[2]);
+  const r21 = 2 * (q[2] * q[3] + q[0] * q[1]);
+  const r22 = 2 * (q[0] * q[0] + q[3] * q[3]) - 1;
+  // 3x3 rotation matrix
+  return [[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]];
 };
 
 export { Quaternion, addQQ, conjugateQ, normalizeQ, concatQQ, quaternionFromAngleAndAxis, quaternionFromStartAndEndVectors, vectorToQuaternion, quaternionToVector, rotate };

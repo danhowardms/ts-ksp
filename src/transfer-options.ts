@@ -28,7 +28,7 @@ class TransferOptions {
     this.initialOrbitalVelocity = initialOrbitalVelocity;
     this.finalOrbitalVelocity = finalOrbitalVelocity;
     [this.p0, this.v0] = TransferOptions.fillInMissing(originBody.orbit, t0, p0, v0);
-    [this.p1, this.v1] = TransferOptions.fillInMissing(originBody.orbit, t0 + dt, p1, v1);
+    [this.p1, this.v1] = TransferOptions.fillInMissing(destinationBody.orbit, t0 + dt, p1, v1);
     this.n0 = n0 == null ? originBody.orbit.normalVector() : n0;
   }
 

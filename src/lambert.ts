@@ -1,5 +1,5 @@
 import { MACHINE_EPSILON, brentsMethod } from "./roots";
-import { addVV, dotVV, mulVS, normV, subVV, Vector3 } from "./vector3";
+import { addVV, dotVV, mulVS, normV, subVV, angleBetween, Vector3 } from "./vector3";
 
 const TWO_PI = 2 * Math.PI;
 const HALF_PI = 0.5 * Math.PI;
@@ -57,7 +57,7 @@ const solveLambert = (mu: number, pos1: Vector3, pos2: Vector3, dt: number, maxR
   const n = r1 + r2 - c;
 
   // Assume we want a prograde orbit counter-clockwise around the +z axis
-  let transferAngle = Math.acos(dotVV(pos1, pos2) / (r1 * r2));
+  let transferAngle = angleBetween(pos1, pos2);
   if ((pos1[0] * pos2[1] - pos1[1] * pos2[0]) * prograde < 0) {
     transferAngle = TWO_PI - transferAngle;
   }
