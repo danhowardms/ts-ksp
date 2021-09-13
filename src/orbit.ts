@@ -197,7 +197,13 @@ class Orbit {
     const e = this.eccentricity;
     const M = this.meanAnomalyAt(t);
     if (this.isHyperbolic()) {
-      return newtonsMethod(M, (x) => {
+      // Try to find a suitable best guess:
+      // We're solving M = e sinh(E) + E
+      // For large positive values of E, M ~ e exp(E)  =>  E ~ ln(M/e)
+      // For large negative values of E, M ~ -e exp(-E) =>  E ~ -ln(-M/e)
+      // For values close to zero M ~ 2eE => E ~ M / 2e
+      const firstGuess = (M > 5 ? Math.log(M / e) : (M < -5 ? -Math.log(-M / e) : (0.5 * M / e)));
+      return newtonsMethod(firstGuess, (x) => {
         return M - e * sinh(x) + x;
       }, (x) => {
         return 1 - e * cosh(x);
@@ -230,6 +236,24 @@ class Orbit {
         return tA;
       }
     }
+  }
+
+  trueAnomalyAtRadiusOutbound(r: number): number {
+    // Find the true anomaly by inverting the orbit equation r = p / (1 + e * cos(ta))
+    // There will always be 2 solutions (if there are any)
+    // The one we want is the one where radius is increasing with time
+    // This corresponds to the value where 0 < ta < pi which is the principle value of the acos function
+    const p = this.semiLatusRectum();
+    return Math.acos((p - r) / (r * this.eccentricity));
+  }
+
+  trueAnomalyAtRadiusInbound(r: number): number {
+    const taOut = this.trueAnomalyAtRadiusOutbound(r);
+    // The outbound solution to the inverse orbit equation is the principle value where 0 < ta < pi
+    // For the inbound solution we want a secondary value
+    // I'll follow the convention that for hyperbolic orbits we express it as a negative -pi < ta < 0
+    // by for elliptical orbits as a positive pi < ta < 2pi
+    return this.isHyperbolic() ? -taOut : taOut + Math.PI;
   }
 
   positionAt(t: number): Vector3 {
@@ -516,8 +540,10 @@ enum TransferType {
 }
 
 type Transfer = {
+  t0: number;
+  t1: number;
   angle: number;
-  orbit?: Orbit;
+  orbit: Orbit;
   ejectionVelocity: Vector3;
   ejectionDeltaVector: Vector3;
   ejectionInclination: number;
@@ -660,6 +686,8 @@ const calculateTransfer = (opts: TransferOptions, planeChangeAngleToIntercept: n
   }
 
   return {
+    t0: opts.t0,
+    t1: opts.t1,
     angle: transferAngle,
     orbit: transferOrbit,
     ejectionVelocity,
@@ -878,4 +906,4 @@ const courseCorrection = (transferOrbit: Orbit, destinationOrbit: Orbit, burnTim
   };
 };
 
-export { Orbit, TransferType, findTransfer };
+export { Orbit, TransferType, Transfer, findTransfer };

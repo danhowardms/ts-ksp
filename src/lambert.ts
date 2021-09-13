@@ -142,6 +142,9 @@ const solveLambert = (mu: number, pos1: Vector3, pos2: Vector3, dt: number, maxR
     while (!(ftau(x2) < 0.0)) {
       x1 = x2;
       x2 *= 2.0;
+      if (! isFinite(x2)) {
+        throw Error("Cannot solve Lambert for hyperbolic - x got too big");
+      }
     }
     x = brentsMethod(x1, x2, 1e-4, ftau);
     pushSolution(x, fy(x), N);
