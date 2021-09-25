@@ -1,4 +1,4 @@
-import {OrbitingCelestialBody} from "./orbiting-celestial-body";
+import {OrbitingCelestialBodyJSON, makeOrbitingCelestialBody, OrbitingCelestialBody} from "./orbiting-celestial-body";
 import {TransferOptions} from "./transfer-options";
 import {findTransfer, TransferType, Transfer, Orbit} from "./orbit";
 import {
@@ -17,9 +17,9 @@ import {brentsMethod, goldenSectionSearch} from "./roots";
 
 type SlingshotOptions = {
     startTime: number,
-    originBody: OrbitingCelestialBody,
-    slingshotBody: OrbitingCelestialBody,
-    destinationBody: OrbitingCelestialBody,
+    originBody: OrbitingCelestialBody | OrbitingCelestialBodyJSON,
+    slingshotBody: OrbitingCelestialBody | OrbitingCelestialBodyJSON,
+    destinationBody: OrbitingCelestialBody | OrbitingCelestialBodyJSON,
     totalDuration: number,
     originOrbitalSpeed: number,
     destinationOrbitalSpeed: number,
@@ -60,9 +60,9 @@ class SlingshotPlanner {
     constructor(opts: SlingshotOptions, ratio?: number) {
         this.startTime = opts.startTime;
         this.endTime = opts.startTime + opts.totalDuration;
-        this.originBody = opts.originBody;
-        this.slingshotBody = opts.slingshotBody;
-        this.destinationBody = opts.destinationBody;
+        this.originBody = makeOrbitingCelestialBody(opts.originBody);
+        this.slingshotBody = makeOrbitingCelestialBody(opts.slingshotBody);
+        this.destinationBody = makeOrbitingCelestialBody(opts.destinationBody);
         this.originOrbitalSpeed = opts.destinationOrbitalSpeed;
         this.destinationOrbitalSpeed = opts.destinationOrbitalSpeed;
         this.totalDuration = opts.totalDuration;

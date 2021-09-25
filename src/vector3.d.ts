@@ -1,0 +1,14 @@
+declare type Vector3 = [number, number, number];
+declare const addVV: (a: Vector3, b: Vector3) => Vector3;
+declare const subVV: (a: Vector3, b: Vector3) => Vector3;
+declare const mulVS: (v: Vector3, s: number) => Vector3;
+declare const divVS: (v: Vector3, s: number) => Vector3;
+declare const normSquaredV: (v: Vector3) => number;
+declare const normV: (v: Vector3) => number;
+declare const normalizeV: (v: Vector3) => Vector3;
+declare const dotVV: (a: Vector3, b: Vector3) => number;
+declare const crossVV: (a: Vector3, b: Vector3) => Vector3;
+declare const angleBetween: (p0: Vector3, p1: Vector3) => number;
+declare const signedAngleInPlaneBetween: (p0: Vector3, p1: Vector3, planeNormal: Vector3) => number;
+declare const projectToPlane: (p: Vector3, n: Vector3) => Vector3;
+export { Vector3, addVV, subVV, mulVS, divVS, normSquaredV, normV, normalizeV, dotVV, crossVV, angleBetween, signedAngleInPlaneBetween, projectToPlane };

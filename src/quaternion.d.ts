@@ -1,0 +1,12 @@
+import { Vector3 } from "./vector3";
+declare type Quaternion = [number, number, number, number];
+declare const addQQ: (a: Quaternion, b: Quaternion) => Quaternion;
+declare const conjugateQ: (q: Quaternion) => Quaternion;
+declare const normalizeQ: (q: Quaternion) => Quaternion;
+declare const concatQQ: (q0: Quaternion, q1: Quaternion) => Quaternion;
+declare const quaternionFromAngleAndAxis: (angle: number, axis: Vector3) => Quaternion;
+declare const quaternionFromStartAndEndVectors: (start: Vector3, end: Vector3) => Quaternion;
+declare const vectorToQuaternion: (v: Vector3) => Quaternion;
+declare const quaternionToVector: (q: Quaternion) => Vector3;
+declare const rotate: (q: Quaternion, v: Vector3) => Vector3;
+export { Quaternion, addQQ, conjugateQ, normalizeQ, concatQQ, quaternionFromAngleAndAxis, quaternionFromStartAndEndVectors, vectorToQuaternion, quaternionToVector, rotate };

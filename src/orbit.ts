@@ -1,11 +1,11 @@
 import { Vector3, addVV, subVV, mulVS, divVS, normSquaredV, normV, normalizeV, dotVV, crossVV, projectToPlane } from "./vector3";
 import { Quaternion, conjugateQ, concatQQ, quaternionFromAngleAndAxis, quaternionFromStartAndEndVectors, rotate } from "./quaternion";
 import { newtonsMethod, goldenSectionSearch } from "./roots";
-import {LambertSolution, solveLambert} from "./lambert";
+import { LambertSolution, solveLambert } from "./lambert";
 import { TransferOptions } from "./transfer-options";
-import { CelestialBody } from "./celestial-body";
+import { CelestialBodyJSON, serializeCelestialBody, makeCelestialBody, CelestialBody } from "./celestial-body";
 import { AngleDegrees } from "./utility-types";
-import { OrbitingCelestialBody } from "./orbiting-celestial-body";
+import {OrbitingCelestialBody, serializeOrbitingCelestialBody} from "./orbiting-celestial-body";
 
 const TWO_PI: number = 2 * Math.PI;
 const HALF_PI: number = 0.5 * Math.PI;
@@ -63,6 +63,17 @@ const degreesToRadians = (degrees: AngleDegrees): number => {
 const radiansToDegrees = (radians: number): AngleDegrees => {
   return ((radians * 180) / Math.PI) as AngleDegrees;
 };
+
+type OrbitJSON = {
+  referenceBody: CelestialBodyJSON;
+  semiMajorAxis: number;
+  eccentricity: number;
+  inclination: number;
+  longitudeOfAscendingNode: number;
+  argumentOfPeriapsis: number;
+  meanAnomalyAtEpoch: number;
+  timeOfPeriapsisPassage?: number;
+}
 
 class Orbit {
   referenceBody: CelestialBody;
@@ -350,19 +361,6 @@ class Orbit {
     p = rotate(conjugateQ(this.rotationToReferenceFrame()), p);
     return Math.atan2(p[1], p[0]);
   }
-
-  /* @todo
-    static fromJSON(json): Orbit {
-        const referenceBody = CelestialBody.fromJSON(json.referenceBody);
-        const orbit = new Orbit(referenceBody, json.semiMajorAxis, json.eccentricity);
-        orbit.inclination = json.inclination;
-        orbit.longitudeOfAscendingNode = json.longitudeOfAscendingNode;
-        orbit.argumentOfPeriapsis = json.argumentOfPeriapsis;
-        orbit.meanAnomalyAtEpoch = json.meanAnomalyAtEpoch;
-        orbit.timeOfPeriapsisPassage = json.timeOfPeriapsisPassage;
-        return orbit;
-    };
-     */
 
   static fromApoapsisAndPeriapsis(referenceBody: CelestialBody, apoapsis: number, periapsis: number, inclinationDegs: AngleDegrees, longitudeOfAscendingNodeDegs: AngleDegrees, argumentOfPeriapsisDegs: AngleDegrees, meanAnomalyAtEpoch: number, timeOfPeriapsisPassage: number) {
     if (apoapsis < periapsis) {
@@ -906,4 +904,30 @@ const courseCorrection = (transferOrbit: Orbit, destinationOrbit: Orbit, burnTim
   };
 };
 
-export { Orbit, TransferType, Transfer, findTransfer };
+const serializeOrbit = (input: Orbit | OrbitJSON): OrbitJSON => {
+  if (input instanceof Orbit) {
+    return {
+      referenceBody: serializeCelestialBody(input.referenceBody),
+      semiMajorAxis: input.semiMajorAxis,
+      eccentricity: input.eccentricity,
+      inclination: input.inclination,
+      longitudeOfAscendingNode: input.longitudeOfAscendingNode,
+      argumentOfPeriapsis: input.argumentOfPeriapsis,
+      meanAnomalyAtEpoch: input.meanAnomalyAtEpoch,
+      timeOfPeriapsisPassage: input.timeOfPeriapsisPassage,
+    };
+  } else {
+    return input;
+  }
+};
+
+const makeOrbit = (input: Orbit | OrbitJSON): Orbit => {
+  if (input instanceof  Orbit) {
+    return input;
+  } else {
+    const referenceBody = makeCelestialBody(input.referenceBody);
+    return new Orbit(referenceBody, input.semiMajorAxis, input.eccentricity, radiansToDegrees(input.inclination), radiansToDegrees(input.longitudeOfAscendingNode), radiansToDegrees(input.argumentOfPeriapsis), input.meanAnomalyAtEpoch, input.timeOfPeriapsisPassage);
+  }
+};
+
+export { OrbitJSON, serializeOrbit, makeOrbit, Orbit, TransferType, Transfer, findTransfer };

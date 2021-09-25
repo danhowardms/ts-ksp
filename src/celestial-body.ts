@@ -4,6 +4,15 @@ const HALF_PI = 0.5 * Math.PI;
 
 const register: Map<string, CelestialBody> = new Map<string, CelestialBody>();
 
+type CelestialBodyJSON = {
+  name: string;
+  mass: number;
+  radius: number;
+  siderealRotation: number;
+  atmPressure: number;
+  atmScaleHeight: number;
+};
+
 class CelestialBody {
   name: string;
   mass: number;
@@ -64,4 +73,27 @@ class CelestialBody {
   }
 }
 
-export { CelestialBody };
+const serializeCelestialBody = (input: CelestialBody | CelestialBodyJSON): CelestialBodyJSON => {
+  if (input instanceof CelestialBody) {
+    return {
+      name: input.name,
+      mass: input.mass,
+      radius: input.radius,
+      siderealRotation: input.siderealRotation,
+      atmPressure: input.atmPressure,
+      atmScaleHeight: input.atmScaleHeight,
+    };
+  } else {
+    return input;
+  }
+};
+
+const makeCelestialBody = (input: CelestialBody | CelestialBodyJSON): CelestialBody => {
+  if (input instanceof CelestialBody) {
+    return input;
+  } else {
+    return new CelestialBody(input.name, input.mass, input.radius, input.siderealRotation, input.atmPressure, input.atmScaleHeight);
+  }
+};
+
+export { CelestialBodyJSON, serializeCelestialBody, makeCelestialBody, CelestialBody };
